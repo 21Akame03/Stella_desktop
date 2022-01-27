@@ -38,7 +38,7 @@ impl std::fmt::Display for Temperature {
     }
 }
 
-async fn wallpaper_changerd() -> Result<(), String> {
+pub async fn wallpaper_changerd() -> Result<(), String> {
    
     /* 
      * Note:

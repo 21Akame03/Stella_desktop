@@ -57,6 +57,7 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
      *
      * weather api: "http://dataservice.accuweather.com/forecasts/v1/daily/1day/234826?apikey=3rcCpg1dvHQFtIiGEksOfP2JUSge4zTE&day=1&unit=c&lang=en-us&details=true&metric=true"
      *
+     * NOTE: deprecated (stopped working; switched to more effective native solution)
      * time api: "https://timeapi.io/api/Time/current/zone?timeZone=Asia/Dubai"
      */
     
@@ -70,15 +71,15 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
         
        let utc: DateTime<Utc> = Utc::now();
        
-       // Mauritius time is UTC + 4 hours.
-       let nowhour = utc.hour() + 4;
+       // NOTE: Mauritius time is UTC + 4 hours.
+       let currhour = utc.with_timezone(&FixedOffset::east(4*3600)).hour();
 
         // will be used to compare new variant to old variant and 
         // decide whether to request for temp and change wallaper 
         let time_day: TimeOfDay;
 
-        match nowhour {
-            
+        match currhour {
+             
             07..=17 => time_day = TimeOfDay::Day(None),
             18..=23 | 00..=06 => time_day = TimeOfDay::Night(None),
             _ => return Err(String::from("Invalid time"))

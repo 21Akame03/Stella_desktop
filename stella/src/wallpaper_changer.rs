@@ -4,6 +4,7 @@ use serde_json::{Value, Map};
 use std::{thread, time};
 use std::process::Command;
 use execute::Execute;
+use chrono::prelude::*;
 
 // define the possible categories for wallpaper
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +39,7 @@ impl std::fmt::Display for Temperature {
     }
 }
 
+// the one to manage it all;
 pub async fn wallpaper_changerd() -> Result<(), String> {
    
     /* 
@@ -66,17 +68,16 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
     #[allow(irrefutable_let_patterns)] 
     while let _ = true {
         
-        //get the time of day
-        let body = get_from_api(String::from("https://timeapi.io/api/Time/current/zone?timeZone=Asia/Dubai")).await; 
-        map = map_value(map, body).unwrap();
-        let curr_time: Value = map["hour"].clone(); 
-        let nowtime: i32 = (curr_time.to_string()).parse::<i32>().unwrap();  
+       let utc: DateTime<Utc> = Utc::now();
        
+       // Mauritius time is UTC + 4 hours.
+       let nowhour = utc.hour() + 4;
+
         // will be used to compare new variant to old variant and 
         // decide whether to request for temp and change wallaper 
         let time_day: TimeOfDay;
 
-        match nowtime {
+        match nowhour {
             
             07..=17 => time_day = TimeOfDay::Day(None),
             18..=23 | 00..=06 => time_day = TimeOfDay::Night(None),
@@ -123,7 +124,7 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
 
         // sleep until the next check 
         // 3600 seconds is 1 hour
-        let time_to_sleep = time::Duration::from_secs(1800);
+        let time_to_sleep = time::Duration::from_secs(600);
         println!("Going to sleep for 30mins.");
         thread::sleep(time_to_sleep);
     }

@@ -1,3 +1,4 @@
+mod ble_device;
 extern crate execute;
 
 use serde_json::{Value, Map};
@@ -5,6 +6,7 @@ use std::{thread, time};
 use std::process::Command;
 use execute::Execute;
 use chrono::prelude::*;
+use self::ble_device::{ BleEarphone, check_earphones };
 
 // define the possible categories for wallpaper
 #[derive(Debug, Clone, Copy)]
@@ -18,8 +20,8 @@ enum TimeOfDay {
 #[derive(Debug, Clone, Copy)]
 enum Temperature {
     
-    Hot,
-    Cold
+    Hot(BleEarphone),
+    Cold(BleEarphone)
 
 }
 
@@ -84,14 +86,15 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
             18..=23 | 00..=06 => time_day = TimeOfDay::Night(None),
             _ => return Err(String::from("Invalid time"))
         
-        } 
+        }
+
     
         if std::mem::discriminant(&condition) == std::mem::discriminant(&None) || std::mem::discriminant(&time_day) != std::mem::discriminant(&condition.unwrap()) {
         
             // get the weather data only if time of day is changed
             let body = get_from_api(String::from("http://dataservice.accuweather.com/forecasts/v1/daily/1day/234826?apikey=3rcCpg1dvHQFtIiGEksOfP2JUSge4zTE&day=1&unit=c&lang=en-us&details=true&metric=true"
             )).await;
-            map = map_value(map, body).unwrap();
+            map = map_value(map, body)?;
             // Extract current weather data
             let curr_temp: Value = map["DailyForecasts"][0]["RealFeelTemperature"]["Minimum"]["Value"].clone();    
             let temp = (curr_temp.to_string()).parse::<f32>().unwrap();
@@ -99,26 +102,30 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
             
             // Do not judge; i dont know how to fix this right now.
             let mut time_day: Option<TimeOfDay> = Option::None;
+            
             /*
              * This is an annoying bit beacause i dont know how to do it any other way.
              */
+            //earphone check
+            let earphone = check_earphones().unwrap();
             if temp > 0.0 && temp <= 22.0 {
                 
                 match &condition.unwrap() {
-                    TimeOfDay::Day(None) => time_day = Some(TimeOfDay::Day(Some(Temperature::Cold))),
-                    TimeOfDay::Night(None) => time_day = Some(TimeOfDay::Night(Some(Temperature::Cold))),
+                    TimeOfDay::Day(None) => time_day = Some(TimeOfDay::Day(Some(Temperature::Cold(earphone)))),
+                    TimeOfDay::Night(None) => time_day = Some(TimeOfDay::Night(Some(Temperature::Cold(earphone)))),
                     _ => return Err(String::from("Invalid enum variant in time_day"))
                 }
 
             } else if temp > 22.0 {
                 
                 match &condition.unwrap() {
-                    TimeOfDay::Day(None) => time_day = Some(TimeOfDay::Day(Some(Temperature::Hot))),
-                    TimeOfDay::Night(None) => time_day = Some(TimeOfDay::Night(Some(Temperature::Hot))),
+                    TimeOfDay::Day(None) => time_day = Some(TimeOfDay::Day(Some(Temperature::Hot(earphone)))),
+                    TimeOfDay::Night(None) => time_day = Some(TimeOfDay::Night(Some(Temperature::Hot(earphone)))),
                     _ => return Err(String::from("Invalid enum variant in time_day"))
                 }
 
-            }  
+            }
+        
             
             change_wallpaper(time_day);
         } 
@@ -185,10 +192,10 @@ fn change_wallpaper(option: Option<TimeOfDay>) {
     } else if option[2].to_lowercase().contains("hot") {
         option[2] = "hot";
     }
-    
-   /*   */
-    // println!("args are {} and {}", String::from(option[0]).to_lowercase(), String::from(option[2]));
-   /*   */ 
+     
+     
+    println!("args are {} and {}", String::from(option[0]).to_lowercase(), String::from(option[2]));
+      
     
     let mut command = Command::new("gsettings");
     command.arg("set");

@@ -1,4 +1,4 @@
-mod ble_device;
+mod devices;
 extern crate execute;
 
 use serde_json::{Value, Map};
@@ -6,24 +6,35 @@ use std::{thread, time};
 use std::process::Command;
 use execute::Execute;
 use chrono::prelude::*;
-use self::ble_device::{ BleEarphone, check_earphones };
+use self::devices::{ Earphone, check_earphones };
+
+struct Condition {
+    time_day: Option<TimeOfDay>,
+    temperature: Option<Temperature>,
+    earphone: Option<Earphone>,
+} 
+
+impl Condition {
+    fn new() -> Self {
+        Self{time_day: None, temperature:None, earphone:None}
+    }
+}
+
 
 // define the possible categories for wallpaper
 #[derive(Debug, Clone, Copy)]
 enum TimeOfDay {
-    
-    Day(Option<Temperature>),
-    Night(Option<Temperature>),
-
+    Day,
+    Night,
 }
+
 
 #[derive(Debug, Clone, Copy)]
 enum Temperature {
-    
-    Hot(BleEarphone),
-    Cold(BleEarphone)
-
+    Hot,
+    Cold
 }
+
 
 /*
  * Implement formating for the given enums for debugging purposes and allowing 
@@ -63,13 +74,80 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
      * time api: "https://timeapi.io/api/Time/current/zone?timeZone=Asia/Dubai"
      */
     
-    let mut map: Map<String, Value> = Map::new();
-    
-    // store the property of the day
-    let mut condition: Option<TimeOfDay> = None;  // Just default to avoid uninitialized
-    
+    // let mut map: Map<String, Value> = Map::new();
+     
+    let mut condition = Condition::new();
+    // usual average temperature
+    let mut prev_temp: f32 = 23.0;
+
     #[allow(irrefutable_let_patterns)] 
     while let _ = true {
+      
+        //earphone variant
+        let earphone = check_earphones().unwrap();
+        // timeOfDay variant
+        let new_time_day: TimeOfDay = match check_time() {
+            Ok(x) => x,
+            Err(x) => return Err(x)
+        };
+        // temp variant
+        let mut temp_variant: Option<Temperature> = None; 
+        
+        /*
+         * ~ If the condition is None where this is the first run, check the temperature;
+         * ~ Afterwards if there is no change in the variant of timeOfDay, do not run an api call
+         * and use prev_temp value
+         *
+         */
+        let mut body: Option<Result<String, reqwest::Error>> = None;
+        let temp: f32;
+        if std::mem::discriminant(&condition.time_day) == std::mem::discriminant(&None) || std::mem::discriminant(&new_time_day) != std::mem::discriminant(&condition.time_day.unwrap()) {
+        
+            // get the weather data only if time of day is changed
+            body = Some(get_from_api(String::from("http://dataservice.accuweather.com/forecasts/v1/daily/1day/234826?apikey=3rcCpg1dvHQFtIiGEksOfP2JUSge4zTE&day=1&unit=c&lang=en-us&details=true&metric=true"
+            )).await); 
+            
+        }
+        
+        /* Extract current weather data 
+         * if there is no internet connection, use default value
+         */
+        match map_value(body) {
+            Ok(map) => {
+                let curr_temp = map["DailyForecasts"][0]["RealFeelTemperature"]["Minimum"]["Value"].clone();
+                temp = (curr_temp.to_string()).parse::<f32>().unwrap(); 
+                prev_temp = temp;
+            },
+            #[allow(unused_variables)]
+            Err(x) => temp = prev_temp.clone() 
+        }; 
+     
+
+        if temp > 0.0 && temp <= 22.0 {
+           temp_variant = Some(Temperature::Cold); 
+        } else if temp > 22.0 {
+            temp_variant = Some(Temperature::Hot);
+        }
+
+
+        if std::mem::discriminant(&condition.earphone) == std::mem::discriminant(&None) || std::mem::discriminant(&condition.earphone.unwrap()) != std::mem::discriminant(&earphone) {
+            condition.temperature = temp_variant;
+            condition.time_day = Some(new_time_day);
+            condition.earphone = Some(earphone);
+            
+            change_wallpaper(&condition);
+        }
+        
+        // sleep until the next check 
+        let time_to_sleep = time::Duration::from_secs(5);
+        thread::sleep(time_to_sleep);
+    }
+
+    // Your annoying
+    Ok(())
+}
+
+fn check_time() -> Result<TimeOfDay, String> {
         
        let utc: DateTime<Utc> = Utc::now();
        
@@ -78,81 +156,32 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
 
         // will be used to compare new variant to old variant and 
         // decide whether to request for temp and change wallaper 
-        let time_day: TimeOfDay;
+        let new_condition: TimeOfDay;
 
         match currhour {
              
-            07..=17 => time_day = TimeOfDay::Day(None),
-            18..=23 | 00..=06 => time_day = TimeOfDay::Night(None),
+            07..=17 => new_condition = TimeOfDay::Day,
+            18..=23 | 0..=06 => new_condition = TimeOfDay::Night,
             _ => return Err(String::from("Invalid time"))
         
         }
-
-    
-        if std::mem::discriminant(&condition) == std::mem::discriminant(&None) || std::mem::discriminant(&time_day) != std::mem::discriminant(&condition.unwrap()) {
         
-            // get the weather data only if time of day is changed
-            let body = get_from_api(String::from("http://dataservice.accuweather.com/forecasts/v1/daily/1day/234826?apikey=3rcCpg1dvHQFtIiGEksOfP2JUSge4zTE&day=1&unit=c&lang=en-us&details=true&metric=true"
-            )).await;
-            map = map_value(map, body)?;
-            // Extract current weather data
-            let curr_temp: Value = map["DailyForecasts"][0]["RealFeelTemperature"]["Minimum"]["Value"].clone();    
-            let temp = (curr_temp.to_string()).parse::<f32>().unwrap();
-            condition = Some(time_day);
-            
-            // Do not judge; i dont know how to fix this right now.
-            let mut time_day: Option<TimeOfDay> = Option::None;
-            
-            /*
-             * This is an annoying bit beacause i dont know how to do it any other way.
-             */
-            //earphone check
-            let earphone = check_earphones().unwrap();
-            if temp > 0.0 && temp <= 22.0 {
-                
-                match &condition.unwrap() {
-                    TimeOfDay::Day(None) => time_day = Some(TimeOfDay::Day(Some(Temperature::Cold(earphone)))),
-                    TimeOfDay::Night(None) => time_day = Some(TimeOfDay::Night(Some(Temperature::Cold(earphone)))),
-                    _ => return Err(String::from("Invalid enum variant in time_day"))
-                }
-
-            } else if temp > 22.0 {
-                
-                match &condition.unwrap() {
-                    TimeOfDay::Day(None) => time_day = Some(TimeOfDay::Day(Some(Temperature::Hot(earphone)))),
-                    TimeOfDay::Night(None) => time_day = Some(TimeOfDay::Night(Some(Temperature::Hot(earphone)))),
-                    _ => return Err(String::from("Invalid enum variant in time_day"))
-                }
-
-            }
-        
-            
-            change_wallpaper(time_day);
-        } 
-
-        // sleep until the next check 
-        // 3600 seconds is 1 hour
-        let time_to_sleep = time::Duration::from_secs(600);
-        println!("Going to sleep for 30mins.");
-        thread::sleep(time_to_sleep);
-    }
-
-    // Your annoying
-    Ok(())
+        return Ok(new_condition)
 }
 
 
-// just for this once let it go please
-// TODO: try to understand what the hell happened?????
-#[allow(unused_assignments)]
-fn map_value(mut map: Map<String, Value>, body: Result<String, reqwest::Error>) -> Result<Map<String, Value>, String> {
-     
+fn map_value( body: Option<Result<String, reqwest::Error>>) -> Result<Map<String, Value>, String> {
+
+    let map: Map<String, Value>; 
     match body {
-        Ok(k) => match get_map_from_string(&k) {
-            Ok(k) => map = k,
-            Err(e) => return Err(e.to_string())
-        },
-        Err(e) => return Err(e.to_string()),
+        Some(k) => match k {
+            Ok(k) => match get_map_from_string(&k) {
+                Ok(k) => map = k,
+                Err(e) => return Err(e.to_string())
+            },
+            Err(e) => return Err(e.to_string()),
+         },
+         None => return Err(String::from("None type"))
     }
     return Ok(map)
 
@@ -181,29 +210,25 @@ async fn get_from_api(url: String) -> Result<String, reqwest::Error> {
 }
 
 // use std::process::command and gnome command gsettings to change wallpaper
-fn change_wallpaper(option: Option<TimeOfDay>) {
+fn change_wallpaper(condition: &Condition) {
     
-    let option = option.unwrap().to_string(); 
-    let mut option: Vec<&str> = option.split("(").collect();
-
-    //make shift fix
-    if option[2].to_lowercase().contains("cold") {
-        option[2] = "cold";
-    } else if option[2].to_lowercase().contains("hot") {
-        option[2] = "hot";
+    let temp = condition.temperature.unwrap().to_string().to_lowercase();
+    let time = condition.time_day.unwrap().to_string().to_lowercase();
+    let mut earphone = condition.earphone.unwrap().to_string().to_lowercase();
+    
+    if earphone == "deactivated" {
+        earphone = "No_Headphone".to_string();
+    } else if earphone == "activated" {
+        earphone = "Headphone".to_string();
     }
-     
-     
-    println!("args are {} and {}", String::from(option[0]).to_lowercase(), String::from(option[2]));
-      
-    
+
     let mut command = Command::new("gsettings");
     command.arg("set");
     command.arg("org.gnome.desktop.background");
     command.arg("picture-uri");
-    command.arg(format!("file:///home/akame/Prog/Stella_desktop/lofi_wallpaper/{}_{}.png", String::from(option[0]).to_lowercase(), String::from(option[2])));
+    command.arg(format!("file:///home/akame/Prog/Stella_desktop/lofi_wallpaper/{}_{}_{}.png", time, temp, earphone));
 
     command.execute_output().unwrap();
-    println!("Changed wallpaper to {}_{}", String::from(option[0]).to_lowercase(), String::from(option[2]));
+    println!("Changed wallpaper to {}_{}_{}", time, temp, earphone);
 
 }

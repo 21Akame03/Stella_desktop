@@ -101,7 +101,7 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
          */
         let mut body: Option<Result<String, reqwest::Error>> = None;
         let temp: f32;
-        if std::mem::discriminant(&condition.time_day) == std::mem::discriminant(&None) || std::mem::discriminant(&new_time_day) != std::mem::discriminant(&condition.time_day.unwrap()) {
+        if are_variants_same(&condition.time_day, &None) || !are_variants_same(&condition.time_day.unwrap(), &new_time_day) {
         
             // get the weather data only if time of day is changed
             body = Some(get_from_api(String::from("http://dataservice.accuweather.com/forecasts/v1/daily/1day/234826?apikey=3rcCpg1dvHQFtIiGEksOfP2JUSge4zTE&day=1&unit=c&lang=en-us&details=true&metric=true"
@@ -130,7 +130,8 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
         }
 
 
-        if std::mem::discriminant(&condition.earphone) == std::mem::discriminant(&None) || std::mem::discriminant(&condition.earphone.unwrap()) != std::mem::discriminant(&earphone) {
+        // if std::mem::discriminant(&condition.earphone) == std::mem::discriminant(&None) || std::mem::discriminant(&condition.earphone.unwrap()) != std::mem::discriminant(&earphone) {
+        if are_variants_same(&condition.earphone, &None) || !are_variants_same(&condition.earphone.unwrap(), &earphone) || !are_variants_same(&condition.time_day.unwrap(), &new_time_day) {
             condition.temperature = temp_variant;
             condition.time_day = Some(new_time_day);
             condition.earphone = Some(earphone);
@@ -145,6 +146,10 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
 
     // Your annoying
     Ok(())
+}
+
+fn are_variants_same <T> (variant1: &T, variant2: &T) -> bool {
+    return std::mem::discriminant(&variant1) == std::mem::discriminant(&variant2)
 }
 
 fn check_time() -> Result<TimeOfDay, String> {

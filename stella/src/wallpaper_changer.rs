@@ -1,6 +1,7 @@
 mod devices;
 extern crate execute;
 
+use log::{info, warn, error};
 use serde_json::{Value, Map};
 use std::{thread, time};
 use std::process::Command;
@@ -84,7 +85,15 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
     while let _ = true {
       
         //earphone variant
-        let earphone = check_earphones().unwrap();
+        let earphone = match check_earphones() {
+            Ok(x) => x,
+            Err(err) => {
+                error!("[-] Error getting earphone data: {}", err);
+                
+                // local return to the variable
+                Earphone::Deactivated 
+            },
+        };
         // timeOfDay variant
         let new_time_day: TimeOfDay = match check_time() {
             Ok(x) => x,
@@ -118,8 +127,10 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
                 temp = (curr_temp.to_string()).parse::<f32>().unwrap(); 
                 prev_temp = temp;
             },
-            #[allow(unused_variables)]
-            Err(x) => temp = prev_temp.clone() 
+            Err(err) => {
+                warn!("[-] Error in getting weather data: {}", err);
+                temp = prev_temp.clone();
+            } 
         }; 
      
 
@@ -149,7 +160,7 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
 }
 
 fn are_variants_same <T> (variant1: &T, variant2: &T) -> bool {
-    return std::mem::discriminant(&variant1) == std::mem::discriminant(&variant2)
+    return std::mem::discriminant(variant1) == std::mem::discriminant(variant2)
 }
 
 fn check_time() -> Result<TimeOfDay, String> {
@@ -198,7 +209,7 @@ fn get_map_from_string(k: &String) -> Result<Map<String, Value>, String> {
     let parsed: Value = serde_json::from_str(&k).unwrap();
     let obj: Map<String, Value> = parsed.as_object().unwrap().clone();
    
-     return Ok(obj)
+    return Ok(obj)
 
 }
 

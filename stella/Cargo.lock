@@ -1513,6 +1513,7 @@ dependencies = [
  "blurz",
  "chrono",
  "execute",
+ "log",
  "notify-rust",
  "reqwest",
  "serde",

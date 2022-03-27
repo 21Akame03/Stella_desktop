@@ -1,7 +1,6 @@
 mod devices;
 extern crate execute;
 
-use log::{info, warn, error};
 use serde_json::{Value, Map};
 use std::{thread, time};
 use std::process::Command;
@@ -85,15 +84,7 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
     while let _ = true {
       
         //earphone variant
-        let earphone = match check_earphones() {
-            Ok(x) => x,
-            Err(err) => {
-                error!("[-] Error getting earphone data: {}", err);
-                
-                // local return to the variable
-                Earphone::Deactivated 
-            },
-        };
+        let earphone = check_earphones().unwrap();
         // timeOfDay variant
         let new_time_day: TimeOfDay = match check_time() {
             Ok(x) => x,
@@ -127,10 +118,8 @@ pub async fn wallpaper_changerd() -> Result<(), String> {
                 temp = (curr_temp.to_string()).parse::<f32>().unwrap(); 
                 prev_temp = temp;
             },
-            Err(err) => {
-                warn!("[-] Error in getting weather data: {}", err);
-                temp = prev_temp.clone();
-            } 
+            #[allow(unused_variables)]
+            Err(x) => temp = prev_temp.clone() 
         }; 
      
 
